@@ -1,0 +1,236 @@
+#include <Keyboard.h>
+#include <EEPROM.h>
+#include "pico/bootrom.h"
+#include "hardware/watchdog.h"
+
+#define FW_VERSION "1.0.0"
+#define DEFAULT_KEY KEY_LEFT_CTRL_ID
+
+const int BUTTON = 13;
+const int LED = 11;
+
+bool pressed = false;
+bool lastButton = false;
+
+uint8_t currentKey;
+
+//-------------------------------
+// Key IDs
+//-------------------------------
+enum
+{
+  KEY_LEFT_CTRL_ID = 0,
+  KEY_RIGHT_CTRL_ID,
+  KEY_LEFT_SHIFT_ID,
+  KEY_RIGHT_SHIFT_ID,
+  KEY_LEFT_ALT_ID,
+  KEY_RIGHT_ALT_ID,
+  KEY_F13_ID,
+  KEY_F14_ID,
+  KEY_A_ID,
+  KEY_B_ID
+};
+
+//-------------------------------
+
+uint8_t keyTable[] =
+{
+  KEY_LEFT_CTRL,
+  KEY_RIGHT_CTRL,
+  KEY_LEFT_SHIFT,
+  KEY_RIGHT_SHIFT,
+  KEY_LEFT_ALT,
+  KEY_RIGHT_ALT,
+  KEY_F13,
+  KEY_F14,
+  'a',
+  'b'
+};
+
+//--------------------------------
+
+void saveConfig()
+{
+  EEPROM.write(0, 0x55);
+  EEPROM.write(1, currentKey);
+  EEPROM.commit();
+}
+
+void loadConfig()
+{
+    EEPROM.begin(16);
+
+    if (EEPROM.read(0) == 0x55)
+    {
+        currentKey = EEPROM.read(1);
+
+        if (currentKey >= (sizeof(keyTable) / sizeof(keyTable[0])))
+            currentKey = DEFAULT_KEY;
+    }
+    else
+    {
+        currentKey = DEFAULT_KEY;
+        saveConfig();
+    }
+}
+
+void factoryReset()
+{
+    currentKey = DEFAULT_KEY;
+
+    saveConfig();
+
+    Serial.println("OK");
+}
+
+void sendCurrentKey()
+{
+    Serial.print("KEY:");
+    Serial.println(currentKey);
+}
+
+void sendInfo()
+{
+    Serial.println("READY");
+
+    Serial.print("VERSION:");
+    Serial.println(FW_VERSION);
+
+    Serial.print("KEY:");
+    Serial.println(currentKey);
+
+    Serial.print("BTN:");
+    Serial.println(!digitalRead(BUTTON) ? 1 : 0);
+}
+
+//--------------------------------
+
+void handleCommand(String cmd)
+{
+  cmd.trim();
+
+  if (cmd == "PING")
+  {
+    Serial.println("PONG");
+    return;
+  }
+
+  if (cmd == "FACTORYRESET")
+  {
+      factoryReset();
+      return;
+  }
+
+  if (cmd == "GETINFO")
+  {
+    sendInfo();
+    return;
+  }
+
+  if (cmd == "GETKEY")
+  {
+    sendCurrentKey();
+    return;
+  }
+
+  if (cmd == "SAVE")
+  {
+    saveConfig();
+    Serial.println("OK");
+    return;
+  }
+
+  if (cmd == "RESET")
+  {
+    Serial.println("OK");
+    delay(100);
+    watchdog_reboot(0, 0, 0);
+    while (1);
+  }
+
+  if (cmd == "BOOTSEL")
+  {
+    Serial.println("OK");
+    delay(100);
+    reset_usb_boot(0,0);
+  }
+
+  const int NUM_KEYS = sizeof(keyTable) / sizeof(keyTable[0]);
+
+  if (cmd.startsWith("SETKEY:"))
+  {
+      int keyID = cmd.substring(7).toInt();
+
+      if (keyID >= 0 && keyID < NUM_KEYS)
+      {
+          currentKey = keyID;
+          Serial.println("OK");
+      }
+      else
+      {
+          Serial.println("ERROR");
+      }
+
+      return;
+  }
+}
+
+//--------------------------------
+
+void setup()
+{
+  pinMode(BUTTON, INPUT_PULLUP);
+  pinMode(LED, OUTPUT);
+
+  Serial.begin(115200);
+
+  Keyboard.begin();
+
+  loadConfig();
+
+  delay(1000);
+
+  Serial.println("READY");
+
+  Serial.print("VERSION:");
+  Serial.println(FW_VERSION);
+
+  sendCurrentKey();
+}
+
+//--------------------------------
+
+void loop()
+{
+  bool state = !digitalRead(BUTTON);
+
+  if(state != lastButton)
+  {
+    lastButton = state;
+
+    Serial.print("BTN:");
+    Serial.println(state ? "1" : "0");
+  }
+
+  if(state && !pressed)
+  {
+    digitalWrite(LED,HIGH);
+    Keyboard.press(keyTable[currentKey]);
+    pressed = true;
+  }
+
+  if(!state && pressed)
+  {
+    digitalWrite(LED,LOW);
+    Keyboard.release(keyTable[currentKey]);
+    pressed = false;
+  }
+
+  while(Serial.available())
+  {
+    String cmd = Serial.readStringUntil('\n');
+    handleCommand(cmd);
+  }
+
+  delay(5);
+}
