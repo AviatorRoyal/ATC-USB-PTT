@@ -1,0 +1,5 @@
+# Python bytecode and packaging artifacts
+Dashboard/__pycache__/
+Dashboard/build/
+Dashboard/dist/
+Dashboard/*.spec
