@@ -5,7 +5,7 @@ import serial
 # ----------------------------
 
 VID = 0x2E8A
-PID = 0xF00B      # Change if you change PID later
+PID = 0x8003      # Waveshare RP2040-Zero USB CDC product ID
 
 BAUDRATE = 115200
 
