@@ -1,18 +1,64 @@
 #include <Keyboard.h>
 #include <EEPROM.h>
+#include <Adafruit_NeoPixel.h>
 #include "pico/bootrom.h"
 #include "hardware/watchdog.h"
 
-#define FW_VERSION "1.0.0"
+#define FW_VERSION "1.0.1"
 #define DEFAULT_KEY KEY_LEFT_CTRL_ID
 
 const int BUTTON = 13;
-const int LED = 11;
+const int LED = 16;
+const int LED_COUNT = 1;
 
 bool pressed = false;
 bool lastButton = false;
 
 uint8_t currentKey;
+
+Adafruit_NeoPixel statusLed(LED_COUNT, LED, NEO_GRB + NEO_KHZ800);
+
+uint32_t displayedColor = 0xFFFFFFFF;
+
+// The button state takes precedence over a connected configurator.
+void setStatusLed(uint8_t red, uint8_t green, uint8_t blue)
+{
+  uint32_t color = statusLed.Color(red, green, blue);
+
+  if (color == displayedColor)
+    return;
+
+  statusLed.setPixelColor(0, color);
+  statusLed.show();
+  displayedColor = color;
+}
+
+void updateStatusLed()
+{
+  if (pressed)
+  {
+    setStatusLed(0, 0, 255);       // Blue: PTT button held
+  }
+  else if (Serial.dtr())
+  {
+    setStatusLed(255, 0, 0);       // Red: configurator serial port open
+  }
+  else
+  {
+    setStatusLed(0, 255, 0);       // Green: device running
+  }
+}
+
+void startupLedTest()
+{
+  setStatusLed(255, 0, 0);
+  delay(20);
+  setStatusLed(0, 255, 0);
+  delay(20);
+  setStatusLed(0, 0, 255);
+  delay(20);
+  displayedColor = 0xFFFFFFFF;
+}
 
 //-------------------------------
 // Key IDs
@@ -180,7 +226,11 @@ void handleCommand(String cmd)
 void setup()
 {
   pinMode(BUTTON, INPUT_PULLUP);
-  pinMode(LED, OUTPUT);
+
+  statusLed.begin();
+  statusLed.clear();
+  statusLed.show();
+  startupLedTest();
 
   Serial.begin(115200);
 
@@ -196,6 +246,7 @@ void setup()
   Serial.println(FW_VERSION);
 
   sendCurrentKey();
+  updateStatusLed();
 }
 
 //--------------------------------
@@ -214,14 +265,12 @@ void loop()
 
   if(state && !pressed)
   {
-    digitalWrite(LED,HIGH);
     Keyboard.press(keyTable[currentKey]);
     pressed = true;
   }
 
   if(!state && pressed)
   {
-    digitalWrite(LED,LOW);
     Keyboard.release(keyTable[currentKey]);
     pressed = false;
   }
@@ -231,6 +280,8 @@ void loop()
     String cmd = Serial.readStringUntil('\n');
     handleCommand(cmd);
   }
+
+  updateStatusLed();
 
   delay(5);
 }
