@@ -6,6 +6,8 @@
 
 #define FW_VERSION "1.0.1"
 #define DEFAULT_KEY KEY_LEFT_CTRL_ID
+#define DEFAULT_BRIGHTNESS 100
+#define MAX_LED_BRIGHTNESS 204
 
 const int BUTTON = 13;
 const int LED = 16;
@@ -15,10 +17,18 @@ bool pressed = false;
 bool lastButton = false;
 
 uint8_t currentKey;
+uint8_t currentBrightness;
 
 Adafruit_NeoPixel statusLed(LED_COUNT, LED, NEO_GRB + NEO_KHZ800);
 
 uint32_t displayedColor = 0xFFFFFFFF;
+
+void setBrightness(uint8_t brightness)
+{
+  currentBrightness = brightness;
+  statusLed.setBrightness((currentBrightness * MAX_LED_BRIGHTNESS + 50) / 100);
+  displayedColor = 0xFFFFFFFF;
+}
 
 // The button state takes precedence over a connected configurator.
 void setStatusLed(uint8_t red, uint8_t green, uint8_t blue)
@@ -99,6 +109,7 @@ void saveConfig()
 {
   EEPROM.write(0, 0x55);
   EEPROM.write(1, currentKey);
+  EEPROM.write(2, currentBrightness);
   EEPROM.commit();
 }
 
@@ -112,10 +123,16 @@ void loadConfig()
 
         if (currentKey >= (sizeof(keyTable) / sizeof(keyTable[0])))
             currentKey = DEFAULT_KEY;
+
+        currentBrightness = EEPROM.read(2);
+
+        if (currentBrightness > 100)
+            currentBrightness = DEFAULT_BRIGHTNESS;
     }
     else
     {
         currentKey = DEFAULT_KEY;
+        currentBrightness = DEFAULT_BRIGHTNESS;
         saveConfig();
     }
 }
@@ -123,6 +140,7 @@ void loadConfig()
 void factoryReset()
 {
     currentKey = DEFAULT_KEY;
+    currentBrightness = DEFAULT_BRIGHTNESS;
 
     saveConfig();
 
@@ -135,6 +153,12 @@ void sendCurrentKey()
     Serial.println(currentKey);
 }
 
+void sendCurrentBrightness()
+{
+    Serial.print("BRIGHTNESS:");
+    Serial.println(currentBrightness);
+}
+
 void sendInfo()
 {
     Serial.println("READY");
@@ -142,8 +166,8 @@ void sendInfo()
     Serial.print("VERSION:");
     Serial.println(FW_VERSION);
 
-    Serial.print("KEY:");
-    Serial.println(currentKey);
+    sendCurrentKey();
+    sendCurrentBrightness();
 
     Serial.print("BTN:");
     Serial.println(!digitalRead(BUTTON) ? 1 : 0);
@@ -176,6 +200,12 @@ void handleCommand(String cmd)
   if (cmd == "GETKEY")
   {
     sendCurrentKey();
+    return;
+  }
+
+  if (cmd == "GETBRIGHTNESS")
+  {
+    sendCurrentBrightness();
     return;
   }
 
@@ -219,6 +249,23 @@ void handleCommand(String cmd)
 
       return;
   }
+
+  if (cmd.startsWith("SETBRIGHTNESS:"))
+  {
+      int brightness = cmd.substring(14).toInt();
+
+      if (brightness >= 0 && brightness <= 100)
+      {
+          setBrightness(brightness);
+          Serial.println("OK");
+      }
+      else
+      {
+          Serial.println("ERROR");
+      }
+
+      return;
+  }
 }
 
 //--------------------------------
@@ -230,13 +277,14 @@ void setup()
   statusLed.begin();
   statusLed.clear();
   statusLed.show();
-  startupLedTest();
 
   Serial.begin(115200);
 
   Keyboard.begin();
 
   loadConfig();
+  setBrightness(currentBrightness);
+  startupLedTest();
 
   delay(1000);
 
@@ -246,6 +294,7 @@ void setup()
   Serial.println(FW_VERSION);
 
   sendCurrentKey();
+  sendCurrentBrightness();
   updateStatusLed();
 }
 

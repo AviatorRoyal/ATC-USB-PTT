@@ -63,6 +63,31 @@ def parse(message: str):
             }
 
     # --------------------------
+    # LED Brightness
+    # --------------------------
+
+    if message.startswith("BRIGHTNESS:"):
+
+        try:
+
+            brightness = int(message.split(":")[1])
+
+            if brightness < 0 or brightness > 100:
+                raise ValueError
+
+            return {
+                "type": "brightness",
+                "value": brightness
+            }
+
+        except (ValueError, IndexError):
+
+            return {
+                "type": "unknown",
+                "raw": message
+            }
+
+    # --------------------------
     # Firmware Version
     # --------------------------
 
