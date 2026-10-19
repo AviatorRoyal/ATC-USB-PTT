@@ -1,8 +1,10 @@
+import os
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox, filedialog
 from datetime import datetime
 
 from serial_manager import SerialManager
+from firmware_updater import FirmwareUpdater, check_uf2
 from protocol import parse
 from keymap import KEYS
 from constants import MODE_KEYBOARD, MODE_JOYSTICK, JOY_BUTTON_MIN, JOY_BUTTON_MAX
@@ -126,8 +128,8 @@ class SharkLiteUI:
         ttk.Button(frame,text="Reset Device",command=self.reset_device)\
             .grid(row=9,column=1,pady=5)
 
-        ttk.Button(frame,text="Bootloader",command=self.enter_bootloader)\
-            .grid(row=9,column=2,pady=5)
+        self.updateButton = ttk.Button(frame,text="Update Firmware",command=self.update_firmware)
+        self.updateButton.grid(row=9,column=2,pady=5)
 
         ttk.Separator(frame).grid(row=10,column=0,columnspan=3,sticky="ew",pady=8)
 
@@ -260,9 +262,50 @@ class SharkLiteUI:
         if messagebox.askyesno("Reset Device","Restart SharkLite?"):
             self.serial.send("RESET")
 
-    def enter_bootloader(self):
-        if messagebox.askyesno("Bootloader","Enter BOOTSEL mode?"):
-            self.serial.send("BOOTSEL")
+    def update_firmware(self):
+        path = filedialog.askopenfilename(
+            title="Select firmware",
+            filetypes=[("UF2 firmware","*.uf2"),("All files","*.*")]
+        )
+
+        if not path:
+            return
+
+        try:
+            check_uf2(path)
+        except (OSError, ValueError) as e:
+            messagebox.showerror("Update Firmware", str(e))
+            return
+
+        name = os.path.basename(path)
+
+        if self.serial.connected:
+            prompt = f"Flash {name}?\n\nThe device will restart into the bootloader and update automatically."
+        else:
+            prompt = (f"Flash {name}?\n\nNo device is connected. After you click Yes, "
+                      "hold the BOOT button while plugging in the device.")
+
+        if not messagebox.askyesno("Update Firmware", prompt):
+            return
+
+        self.updateButton.configure(state="disabled", text="Updating...")
+        self.log(f"Firmware update: {name}")
+
+        FirmwareUpdater(
+            self.serial,
+            path,
+            on_log=lambda msg: self.root.after(0, lambda: self.log(msg)),
+            on_done=lambda ok, msg: self.root.after(0, lambda: self.update_finished(ok, msg))
+        ).start()
+
+    def update_finished(self, ok, msg):
+        self.updateButton.configure(state="normal", text="Update Firmware")
+        self.log(msg.split("\n")[0])
+
+        if ok:
+            messagebox.showinfo("Update Firmware", msg)
+        else:
+            messagebox.showerror("Update Firmware", msg)
 
     def close(self):
         self.serial.close()

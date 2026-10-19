@@ -17,6 +17,9 @@ class SerialManager:
 
         self.connected = False
 
+        # While paused the worker does not reconnect (used around the 1200 baud touch).
+        self.paused = False
+
         self.thread = threading.Thread(
             target=self.worker,
             daemon=True
@@ -119,6 +122,45 @@ class SerialManager:
 
     # ------------------------------------------------
 
+    def touch_1200(self):
+        """
+        Reboots the device into its UF2 bootloader the way the Arduino IDE does:
+        open the port at 1200 baud and drop DTR. Handled by the arduino-pico core,
+        so it works even if the firmware ignores the BOOTSEL command.
+        """
+
+        port = self.find_device()
+
+        if port is None:
+            return False
+
+        self.paused = True
+
+        try:
+
+            self.disconnect()
+
+            time.sleep(0.2)
+
+            touch = serial.Serial(port, 1200)
+            touch.dtr = False
+            time.sleep(0.1)
+            touch.close()
+
+            return True
+
+        except Exception as e:
+
+            print(e)
+
+            return False
+
+        finally:
+
+            self.paused = False
+
+    # ------------------------------------------------
+
     def worker(self):
 
         while self.running:
@@ -129,7 +171,8 @@ class SerialManager:
 
             if not self.connected:
 
-                self.connect()
+                if not self.paused:
+                    self.connect()
 
                 time.sleep(1)
 
