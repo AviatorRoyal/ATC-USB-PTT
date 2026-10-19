@@ -14,7 +14,7 @@ class SharkLiteUI:
 
     def __init__(self):
         self.root = tk.Tk()
-        self.root.title("SharkLite Configurator v1.2.0")
+        self.root.title("SharkLite Configurator v1.2.1")
         self.root.geometry("560x530")
         self.root.resizable(False, False)
 

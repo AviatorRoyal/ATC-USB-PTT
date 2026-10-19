@@ -17,7 +17,7 @@ It works on any computer with no drivers. Press the button and your radio or voi
 - **Saved on the device**: settings are kept in flash, so the button works the same on any PC.
 - **RGB status LED** with adjustable brightness.
 - **No drivers needed**: a standard USB HID device on Windows, macOS and Linux. The Configurator app is for Windows.
-- **Easy firmware updates**: drag and drop a `.uf2` file.
+- **One-click firmware updates**: the Configurator flashes a `.uf2` for you, with no BOOT button needed. Drag and drop also works.
 
 ## Download
 
@@ -32,15 +32,22 @@ Get the latest files from the **[Releases page](https://github.com/AviatorRoyal/
 
 ### 1. Flash the firmware
 
-1. Put the board in bootloader mode in one of two ways:
-   - Hold the **BOOT** button while plugging in the USB cable.
-   - If older firmware is already on it, click **Bootloader** in the Configurator.
-2. A drive named **`RPI-RP2`** appears.
-3. Drag the `.uf2` file onto it. The board reboots by itself, and the LED flashes red, green, then blue.
+**With the Configurator (recommended)**
+
+1. Unzip and run **SharkLite Configurator.exe**, then click **Update Firmware**.
+2. Select the `.uf2` file and confirm.
+3. The app restarts the device into its bootloader, copies the firmware and waits for the device to come back. You don't need to press any button.
+
+If the board is blank or not responding, click **Update Firmware** anyway. When asked, hold the **BOOT** button while plugging it in.
+
+**Manually (drag and drop)**
+
+1. Hold the **BOOT** button while plugging in the USB cable. A drive named **`RPI-RP2`** appears.
+2. Drag the `.uf2` file onto it. The board reboots by itself, and the LED flashes red, green, then blue.
 
 ### 2. Configure it
 
-1. Unzip and run **SharkLite Configurator.exe**. It finds the device automatically.
+1. Run **SharkLite Configurator.exe**. It finds the device automatically.
 2. Pick an **Output** mode:
    - **Keyboard**: choose the PTT key.
    - **Joystick**: choose the joystick button number (1-32).
