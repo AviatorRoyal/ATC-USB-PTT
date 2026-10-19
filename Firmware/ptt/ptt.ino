@@ -1,13 +1,29 @@
 #include <Keyboard.h>
+#include <Joystick.h>
 #include <EEPROM.h>
 #include <Adafruit_NeoPixel.h>
 #include "pico/bootrom.h"
 #include "hardware/watchdog.h"
 
-#define FW_VERSION "1.0.1"
+#define FW_VERSION "1.2.0"
 #define DEFAULT_KEY KEY_LEFT_CTRL_ID
 #define DEFAULT_BRIGHTNESS 100
 #define MAX_LED_BRIGHTNESS 204
+#define DEFAULT_MODE MODE_KEYBOARD
+#define DEFAULT_JOY_BUTTON 1
+#define MAX_JOY_BUTTON 32
+
+// EEPROM layout markers: v1.0.x stored key + brightness, v1.2 adds mode + joystick button.
+#define CONFIG_MAGIC_V1 0x55
+#define CONFIG_MAGIC_V2 0x56
+
+// Output modes: which HID report the PTT button drives.
+enum
+{
+  MODE_KEYBOARD = 0,
+  MODE_JOYSTICK,
+  MODE_COUNT
+};
 
 const int BUTTON = 13;
 const int LED = 16;
@@ -18,6 +34,8 @@ bool lastButton = false;
 
 uint8_t currentKey;
 uint8_t currentBrightness;
+uint8_t currentMode;
+uint8_t currentJoyButton;
 
 Adafruit_NeoPixel statusLed(LED_COUNT, LED, NEO_GRB + NEO_KHZ800);
 
@@ -105,11 +123,42 @@ uint8_t keyTable[] =
 
 //--------------------------------
 
+// Sends the press/release to whichever HID output the current mode selects.
+void pressOutput()
+{
+  if (currentMode == MODE_JOYSTICK)
+    Joystick.button(currentJoyButton, true);
+  else
+    Keyboard.press(keyTable[currentKey]);
+}
+
+void releaseOutput()
+{
+  if (currentMode == MODE_JOYSTICK)
+    Joystick.button(currentJoyButton, false);
+  else
+    Keyboard.release(keyTable[currentKey]);
+}
+
+// Releases a held output before the key, button or mode changes, so nothing stays stuck down.
+void releaseIfPressed()
+{
+  if (pressed)
+  {
+    releaseOutput();
+    pressed = false;
+  }
+}
+
+//--------------------------------
+
 void saveConfig()
 {
-  EEPROM.write(0, 0x55);
+  EEPROM.write(0, CONFIG_MAGIC_V2);
   EEPROM.write(1, currentKey);
   EEPROM.write(2, currentBrightness);
+  EEPROM.write(3, currentMode);
+  EEPROM.write(4, currentJoyButton);
   EEPROM.commit();
 }
 
@@ -117,7 +166,9 @@ void loadConfig()
 {
     EEPROM.begin(16);
 
-    if (EEPROM.read(0) == 0x55)
+    uint8_t magic = EEPROM.read(0);
+
+    if (magic == CONFIG_MAGIC_V1 || magic == CONFIG_MAGIC_V2)
     {
         currentKey = EEPROM.read(1);
 
@@ -128,20 +179,48 @@ void loadConfig()
 
         if (currentBrightness > 100)
             currentBrightness = DEFAULT_BRIGHTNESS;
+
+        currentMode = DEFAULT_MODE;
+        currentJoyButton = DEFAULT_JOY_BUTTON;
+
+        if (magic == CONFIG_MAGIC_V2)
+        {
+            currentMode = EEPROM.read(3);
+
+            if (currentMode >= MODE_COUNT)
+                currentMode = DEFAULT_MODE;
+
+            currentJoyButton = EEPROM.read(4);
+
+            if (currentJoyButton < 1 || currentJoyButton > MAX_JOY_BUTTON)
+                currentJoyButton = DEFAULT_JOY_BUTTON;
+        }
+        else
+        {
+            // Upgrade a v1.0.x config in place; it keeps working as a keyboard.
+            saveConfig();
+        }
     }
     else
     {
         currentKey = DEFAULT_KEY;
         currentBrightness = DEFAULT_BRIGHTNESS;
+        currentMode = DEFAULT_MODE;
+        currentJoyButton = DEFAULT_JOY_BUTTON;
         saveConfig();
     }
 }
 
 void factoryReset()
 {
+    releaseIfPressed();
+
     currentKey = DEFAULT_KEY;
     currentBrightness = DEFAULT_BRIGHTNESS;
+    currentMode = DEFAULT_MODE;
+    currentJoyButton = DEFAULT_JOY_BUTTON;
 
+    setBrightness(currentBrightness);
     saveConfig();
 
     Serial.println("OK");
@@ -159,6 +238,18 @@ void sendCurrentBrightness()
     Serial.println(currentBrightness);
 }
 
+void sendCurrentMode()
+{
+    Serial.print("MODE:");
+    Serial.println(currentMode);
+}
+
+void sendCurrentJoyButton()
+{
+    Serial.print("JOYBTN:");
+    Serial.println(currentJoyButton);
+}
+
 void sendInfo()
 {
     Serial.println("READY");
@@ -168,6 +259,8 @@ void sendInfo()
 
     sendCurrentKey();
     sendCurrentBrightness();
+    sendCurrentMode();
+    sendCurrentJoyButton();
 
     Serial.print("BTN:");
     Serial.println(!digitalRead(BUTTON) ? 1 : 0);
@@ -209,6 +302,18 @@ void handleCommand(String cmd)
     return;
   }
 
+  if (cmd == "GETMODE")
+  {
+    sendCurrentMode();
+    return;
+  }
+
+  if (cmd == "GETJOYBTN")
+  {
+    sendCurrentJoyButton();
+    return;
+  }
+
   if (cmd == "SAVE")
   {
     saveConfig();
@@ -239,7 +344,44 @@ void handleCommand(String cmd)
 
       if (keyID >= 0 && keyID < NUM_KEYS)
       {
+          releaseIfPressed();
           currentKey = keyID;
+          Serial.println("OK");
+      }
+      else
+      {
+          Serial.println("ERROR");
+      }
+
+      return;
+  }
+
+  if (cmd.startsWith("SETMODE:"))
+  {
+      int mode = cmd.substring(8).toInt();
+
+      if (mode >= 0 && mode < MODE_COUNT)
+      {
+          releaseIfPressed();
+          currentMode = mode;
+          Serial.println("OK");
+      }
+      else
+      {
+          Serial.println("ERROR");
+      }
+
+      return;
+  }
+
+  if (cmd.startsWith("SETJOYBTN:"))
+  {
+      int joyButton = cmd.substring(10).toInt();
+
+      if (joyButton >= 1 && joyButton <= MAX_JOY_BUTTON)
+      {
+          releaseIfPressed();
+          currentJoyButton = joyButton;
           Serial.println("OK");
       }
       else
@@ -281,6 +423,7 @@ void setup()
   Serial.begin(115200);
 
   Keyboard.begin();
+  Joystick.begin();
 
   loadConfig();
   setBrightness(currentBrightness);
@@ -295,6 +438,8 @@ void setup()
 
   sendCurrentKey();
   sendCurrentBrightness();
+  sendCurrentMode();
+  sendCurrentJoyButton();
   updateStatusLed();
 }
 
@@ -314,13 +459,13 @@ void loop()
 
   if(state && !pressed)
   {
-    Keyboard.press(keyTable[currentKey]);
+    pressOutput();
     pressed = true;
   }
 
   if(!state && pressed)
   {
-    Keyboard.release(keyTable[currentKey]);
+    releaseOutput();
     pressed = false;
   }
 
