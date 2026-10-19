@@ -34,7 +34,7 @@ class SerialManager:
 
         for port in serial.tools.list_ports.comports():
 
-            if port.vid == VID and port.pid == PID:
+            if port.vid == VID and port.pid in PIDS:
                 return port.device
 
         return None

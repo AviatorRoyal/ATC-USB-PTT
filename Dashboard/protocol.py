@@ -1,6 +1,7 @@
 # protocol.py
 
 from keymap import KEYS_REVERSE
+from constants import MODE_KEYBOARD, MODE_JOYSTICK, JOY_BUTTON_MIN, JOY_BUTTON_MAX
 
 
 def parse(message: str):
@@ -78,6 +79,56 @@ def parse(message: str):
             return {
                 "type": "brightness",
                 "value": brightness
+            }
+
+        except (ValueError, IndexError):
+
+            return {
+                "type": "unknown",
+                "raw": message
+            }
+
+    # --------------------------
+    # Output Mode
+    # --------------------------
+
+    if message.startswith("MODE:"):
+
+        try:
+
+            mode = int(message.split(":")[1])
+
+            if mode not in (MODE_KEYBOARD, MODE_JOYSTICK):
+                raise ValueError
+
+            return {
+                "type": "mode",
+                "value": mode
+            }
+
+        except (ValueError, IndexError):
+
+            return {
+                "type": "unknown",
+                "raw": message
+            }
+
+    # --------------------------
+    # Joystick Button
+    # --------------------------
+
+    if message.startswith("JOYBTN:"):
+
+        try:
+
+            button = int(message.split(":")[1])
+
+            if button < JOY_BUTTON_MIN or button > JOY_BUTTON_MAX:
+                raise ValueError
+
+            return {
+                "type": "joybutton",
+                "value": button
             }
 
         except (ValueError, IndexError):
