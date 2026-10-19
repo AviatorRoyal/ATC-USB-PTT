@@ -1,5 +1,8 @@
 # Python bytecode and packaging artifacts
 Dashboard/__pycache__/
 Dashboard/build/
-Dashboard/dist/
-Dashboard/*.spec
+
+# Keep only the released dashboard binaries from PyInstaller's output
+Dashboard/dist/*
+!Dashboard/dist/SharkLite Configurator.exe
+!Dashboard/dist/SharkLite Configurator.zip
